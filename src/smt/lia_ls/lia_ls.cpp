@@ -401,6 +401,8 @@ void ls_solver::resolution(){
             if(_clauses[clause_idx].is_delete)continue;
             for(int l_var_sign:_clauses[clause_idx].literals){
                 if(!_lits[std::abs(l_var_sign)].is_lia_lit&&_lits[std::abs(l_var_sign)].delta==bool_var_idx){//make sure that it is a boolean literal and is exactly the one containing the var
+                    if(pos_clause_size>=(int)pos_clauses.size()){pos_clauses.resize(2*pos_clauses.size()+1);}
+                    if(neg_clause_size>=(int)neg_clauses.size()){neg_clauses.resize(2*neg_clauses.size()+1);}
                     if(l_var_sign>0){pos_clauses[pos_clause_size++]=clause_idx;}
                     else{neg_clauses[neg_clause_size++]=clause_idx;}
                     break;
