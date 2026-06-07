@@ -45,6 +45,10 @@ void ls_solver::build_lits(std::string &in_string){
                 if(vec[idx]=="("){
                     idx+=2;
                     __int128_t coff=std::atoll(vec[idx].c_str());
+                    if (coff == 0) {
+                        idx += 2;
+                        continue;
+                    }
                     if(coff>0){
                         l->pos_coff.push_back(coff);
                         l->pos_coff_var_idx.push_back((int)transfer_name_to_tmp_var(vec[++idx]));
@@ -567,6 +571,15 @@ void ls_solver::reduce_clause(){
             if(!lit_appear[l->lits_index]){lit_appear[l->lits_index]=true;}
         }
     }//determine the literals of vars
+    _num_lia_lits=0;
+    _num_bool_lits=0;
+    for(int l_idx=0;l_idx<_lits.size();l_idx++){
+        lit *l=&(_lits[l_idx]);
+        if(l->lits_index==0){continue;}
+        if(!lit_appear[l->lits_index]){continue;}
+        if(l->is_lia_lit){_num_lia_lits++;}
+        else{_num_bool_lits++;}
+    }
     _vars.resize(_vars.size());
     _num_vars=_vars.size();
     _num_lia_vars=0;
@@ -694,7 +707,7 @@ void ls_solver::initialize_variable_datas(){
 //initialize the delta of each literal by delta_lit operation
 void ls_solver::initialize_lit_datas(){
     for(int i=0;i<_num_lits;i++){
-        if(_lits[i].lits_index!=0&&_lits[i].is_lia_lit){_lits[i].delta=delta_lit(_lits[i]);}
+        if(_lits[i].lits_index!=0&&_lits[i].is_lia_lit&&lit_appear[i]){_lits[i].delta=delta_lit(_lits[i]);}
     }
 }
 //set the sat num of each clause, and sat/unsat a clause
@@ -1384,6 +1397,7 @@ void ls_solver::up_bool_vars(){
     for(variable &var:_resolution_vars){
         if(var.is_lia&&name2var.find(var.var_name)==name2var.end()){//if it is an lia var and it is not in the formula
             int var_idx=(int)transfer_name_to_reduced_var(var.var_name, true);//insert it into the vars
+            if(var_idx>=static_cast<int>(_solution.size())){_solution.resize(var_idx+1);}
             if(var.low_bound>0){_solution[var_idx]=var.low_bound;}
             else if(var.upper_bound<0){_solution[var_idx]=var.upper_bound;}
             else{_solution[var_idx]=0;}
@@ -1396,10 +1410,12 @@ void ls_solver::up_bool_vars(){
             for(int var_idx=0;var_idx<l->pos_coff_var_idx.size();var_idx++){
                 int resolution_var_idx=l->pos_coff_var_idx[var_idx];
                 l->pos_coff_var_idx[var_idx]=(int)transfer_name_to_reduced_var(_resolution_vars[resolution_var_idx].var_name, true);
+                if(l->pos_coff_var_idx[var_idx]>=static_cast<int>(_solution.size())){_solution.resize(l->pos_coff_var_idx[var_idx]+1);}
             }
             for(int var_idx=0;var_idx<l->neg_coff_var_idx.size();var_idx++){
                 int resolution_var_idx=l->neg_coff_var_idx[var_idx];
                 l->neg_coff_var_idx[var_idx]=(int)transfer_name_to_reduced_var(_resolution_vars[resolution_var_idx].var_name, true);
+                if(l->neg_coff_var_idx[var_idx]>=static_cast<int>(_solution.size())){_solution.resize(l->neg_coff_var_idx[var_idx]+1);}
             }
             l->delta=delta_lit(*l);
         }
