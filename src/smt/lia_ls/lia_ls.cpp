@@ -870,12 +870,24 @@ void ls_solver::random_walk(){
     }
     //make move
     if(operation_idx+operation_idx_bool==0){return;}
+    char const* score_kind;
+    __int128_t move_score;
     if(operation_idx_bool==0||(operation_idx>0&&operation_idx_bool>0&&!is_in_bool_search)){
         var_idx=operation_var_idx_vec[best_operation_idx];
         change_value=operation_change_value_vec[best_operation_idx];
+        score_kind="subscore";
+        move_score=critical_subscore(var_idx, change_value);
     }
-    else{var_idx=operation_var_idx_bool_vec[best_operation_idx_bool];change_value=0;}
+    else{
+        var_idx=operation_var_idx_bool_vec[best_operation_idx_bool];
+        change_value=0;
+        score_kind="bool_score";
+        move_score=_vars[var_idx].score;
+    }
+    int before_unsat_clauses=unsat_clauses->size();
+    int before_unsat_lits=_lit_in_unsat_clause_num;
     critical_move(var_idx, change_value);
+    trace_move("random_walk", var_idx, change_value, score_kind, move_score, before_unsat_clauses, before_unsat_lits);
 }
 
 //construction
@@ -1151,6 +1163,37 @@ void ls_solver::clear_prev_data(){
     no_improve_cnt_bool=0;
     no_improve_cnt_lia=0;
 }
+
+void ls_solver::configure_trace(){
+    _trace_moves=std::getenv("LIA_LS_TRACE_MOVES")!=nullptr;
+    _trace_move_count=0;
+    _trace_move_limit=0;
+    if(char const* limit=std::getenv("LIA_LS_TRACE_MOVE_LIMIT")){
+        _trace_move_limit=std::strtoull(limit, nullptr, 10);
+    }
+}
+
+void ls_solver::trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits){
+    if(!_trace_moves){return;}
+    if(_trace_move_limit!=0&&_trace_move_count>=_trace_move_limit){return;}
+    _trace_move_count++;
+    std::cerr<<"lia_ls_trace"
+             <<"\ttype=move"
+             <<"\tstep="<<_step
+             <<"\touter_step="<<_outer_layer_step
+             <<"\tsource="<<source
+             <<"\tmode="<<(_vars[var_idx].is_lia?"lia":"bool")
+             <<"\tvar_idx="<<var_idx
+             <<"\tvar="<<_vars[var_idx].var_name
+             <<"\tchange="<<print_128(change_value)
+             <<"\tscore_kind="<<score_kind
+             <<"\tscore="<<print_128(score)
+             <<"\tunsat_clauses_before="<<before_unsat_clauses
+             <<"\tunsat_clauses_after="<<unsat_clauses->size()
+             <<"\tunsat_lits_before="<<before_unsat_lits
+             <<"\tunsat_lits_after="<<_lit_in_unsat_clause_num
+             <<"\n";
+}
 //return the upper round of (a/b): (-3.5)->-4; (3.5)->4
 __int128_t ls_solver::devide(__int128_t a, __int128_t b){
     __int128_t up_round=(abs_128(a))/(b);
@@ -1277,7 +1320,12 @@ void ls_solver::swap_from_small_weight_clause(){
                             if(score>best_score){best_score=score;best_operation_var=var_idx;best_operation_value=value;}}
                     }
                 }//delta should be 0, while it is not 0, so the var should increase (-delta/coff), while (-delta%coff)==0
-                critical_move(best_operation_var, best_operation_value);
+                {
+                    int before_unsat_clauses=unsat_clauses->size();
+                    int before_unsat_lits=_lit_in_unsat_clause_num;
+                    critical_move(best_operation_var, best_operation_value);
+                    trace_move("swap", best_operation_var, best_operation_value, "critical_score", best_score, before_unsat_clauses, before_unsat_lits);
+                }
             }//equal lit
             else if(l->is_lia_lit){
                 for(int i=0;i<l->neg_coff.size();i++){
@@ -1296,9 +1344,20 @@ void ls_solver::swap_from_small_weight_clause(){
                         score=critical_score(var_idx, value);
                         if(score>best_score){best_score=score;best_operation_var=var_idx;best_operation_value=value;}}//do not consider tabu here
                 }
-                critical_move(best_operation_var, best_operation_value);
+                {
+                    int before_unsat_clauses=unsat_clauses->size();
+                    int before_unsat_lits=_lit_in_unsat_clause_num;
+                    critical_move(best_operation_var, best_operation_value);
+                    trace_move("swap", best_operation_var, best_operation_value, "critical_score", best_score, before_unsat_clauses, before_unsat_lits);
+                }
             }//a-b+k<=0
-            else {critical_move(l->delta, 0);}//a boolean operation
+            else {
+                int before_unsat_clauses=unsat_clauses->size();
+                int before_unsat_lits=_lit_in_unsat_clause_num;
+                __int128_t move_score=_vars[l->delta].score;
+                critical_move(l->delta, 0);
+                trace_move("swap", l->delta, 0, "bool_score", move_score, before_unsat_clauses, before_unsat_lits);
+            }//a boolean operation
             break;
         }
     }
@@ -1841,6 +1900,7 @@ bool ls_solver::local_search(){
     int flipv;
     __int128_t change_value=0;
     start = std::chrono::steady_clock::now();
+    configure_trace();
     initialize();
     _outer_layer_step=1;
     for(_step=1;_step<_max_step;_step++){
@@ -1858,13 +1918,26 @@ bool ls_solver::local_search(){
         else if((!is_in_bool_search&&_bool_lit_in_unsat_clause_num>0&&time_up_lia)||(_lit_in_unsat_clause_num==_bool_lit_in_unsat_clause_num)){enter_bool_mode();}
         if(is_in_bool_search){
             flipv=pick_critical_move_bool();
-            if(flipv!=-1){critical_move(flipv, change_value);}
+            if(flipv!=-1){
+                change_value=0;
+                int before_unsat_clauses=unsat_clauses->size();
+                int before_unsat_lits=_lit_in_unsat_clause_num;
+                __int128_t move_score=_vars[flipv].score;
+                critical_move(flipv, change_value);
+                trace_move("critical_bool", flipv, change_value, "bool_score", move_score, before_unsat_clauses, before_unsat_lits);
+            }
             if(update_outer_best_solution()) no_improve_cnt_bool=0;
             else                              no_improve_cnt_bool++;
         }
         else{
             flipv=pick_critical_move(change_value);
-            if(flipv!=-1){critical_move(flipv, change_value);}
+            if(flipv!=-1){
+                int before_unsat_clauses=unsat_clauses->size();
+                int before_unsat_lits=_lit_in_unsat_clause_num;
+                __int128_t move_score=critical_score(flipv, change_value);
+                critical_move(flipv, change_value);
+                trace_move("critical_lia", flipv, change_value, "critical_score", move_score, before_unsat_clauses, before_unsat_lits);
+            }
             if(update_inner_best_solution()) no_improve_cnt_lia=0;
             else                               no_improve_cnt_lia++;
         }

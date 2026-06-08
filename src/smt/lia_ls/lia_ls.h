@@ -132,6 +132,9 @@ public:
     uint64_t                    total_clause_weight;
     int                         _lit_in_unsat_clause_num;
     int                         _bool_lit_in_unsat_clause_num;
+    bool                        _trace_moves=false;
+    uint64_t                    _trace_move_count=0;
+    uint64_t                    _trace_move_limit=0;
     
     //input transformation
     void                        split_string(std::string &in_string, std::vector<std::string> &str_vec,std::string pattern);
@@ -192,6 +195,8 @@ public:
     void                        enter_bool_mode();
     bool                        update_inner_best_solution();
     bool                        update_outer_best_solution();
+    void                        configure_trace();
+    void                        trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits);
     //print
     void                        print_formula();
     void                        print_literal(lit &l);
