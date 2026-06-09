@@ -941,8 +941,10 @@ void ls_solver::random_walk(){
     }
     int before_unsat_clauses=unsat_clauses->size();
     int before_unsat_lits=_lit_in_unsat_clause_num;
+    int tabu_idx=_vars[var_idx].is_lia?((change_value>0)?(2*var_idx):(2*var_idx+1)):(2*var_idx);
+    bool tabu_before=_step<=tabulist[tabu_idx];
     critical_move(var_idx, change_value);
-    trace_move("random_walk", var_idx, change_value, score_kind, move_score, before_unsat_clauses, before_unsat_lits);
+    trace_move("random_walk", var_idx, change_value, score_kind, move_score, before_unsat_clauses, before_unsat_lits, tabu_before);
 }
 
 //construction
@@ -1228,7 +1230,7 @@ void ls_solver::configure_trace(){
     }
 }
 
-void ls_solver::trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits){
+void ls_solver::trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits, bool tabu_before){
     if(!_trace_moves){return;}
     if(_trace_move_limit!=0&&_trace_move_count>=_trace_move_limit){return;}
     _trace_move_count++;
@@ -1243,6 +1245,7 @@ void ls_solver::trace_move(char const* source, uint64_t var_idx, __int128_t chan
              <<"\tchange="<<print_128(change_value)
              <<"\tscore_kind="<<score_kind
              <<"\tscore="<<print_128(score)
+             <<"\ttabu_before="<<(tabu_before?1:0)
              <<"\tunsat_clauses_before="<<before_unsat_clauses
              <<"\tunsat_clauses_after="<<unsat_clauses->size()
              <<"\tunsat_lits_before="<<before_unsat_lits
@@ -1464,8 +1467,10 @@ void ls_solver::swap_from_small_weight_clause(){
                 {
                     int before_unsat_clauses=unsat_clauses->size();
                     int before_unsat_lits=_lit_in_unsat_clause_num;
+                    int tabu_idx=(best_operation_value>0)?(2*best_operation_var):(2*best_operation_var+1);
+                    bool tabu_before=_step<=tabulist[tabu_idx];
                     critical_move(best_operation_var, best_operation_value);
-                    trace_move("swap", best_operation_var, best_operation_value, "critical_score", best_score, before_unsat_clauses, before_unsat_lits);
+                    trace_move("swap", best_operation_var, best_operation_value, "critical_score", best_score, before_unsat_clauses, before_unsat_lits, tabu_before);
                 }
             }//equal lit
             else if(l->is_lia_lit){
@@ -1488,16 +1493,19 @@ void ls_solver::swap_from_small_weight_clause(){
                 {
                     int before_unsat_clauses=unsat_clauses->size();
                     int before_unsat_lits=_lit_in_unsat_clause_num;
+                    int tabu_idx=(best_operation_value>0)?(2*best_operation_var):(2*best_operation_var+1);
+                    bool tabu_before=_step<=tabulist[tabu_idx];
                     critical_move(best_operation_var, best_operation_value);
-                    trace_move("swap", best_operation_var, best_operation_value, "critical_score", best_score, before_unsat_clauses, before_unsat_lits);
+                    trace_move("swap", best_operation_var, best_operation_value, "critical_score", best_score, before_unsat_clauses, before_unsat_lits, tabu_before);
                 }
             }//a-b+k<=0
             else {
                 int before_unsat_clauses=unsat_clauses->size();
                 int before_unsat_lits=_lit_in_unsat_clause_num;
                 __int128_t move_score=_vars[l->delta].score;
+                bool tabu_before=_step<=tabulist[2*l->delta];
                 critical_move(l->delta, 0);
-                trace_move("swap", l->delta, 0, "bool_score", move_score, before_unsat_clauses, before_unsat_lits);
+                trace_move("swap", l->delta, 0, "bool_score", move_score, before_unsat_clauses, before_unsat_lits, tabu_before);
             }//a boolean operation
             break;
         }
@@ -2068,8 +2076,9 @@ bool ls_solver::local_search(){
                 int before_unsat_clauses=unsat_clauses->size();
                 int before_unsat_lits=_lit_in_unsat_clause_num;
                 __int128_t move_score=_vars[flipv].score;
+                bool tabu_before=_step<=tabulist[2*flipv];
                 critical_move(flipv, change_value);
-                trace_move("critical_bool", flipv, change_value, "bool_score", move_score, before_unsat_clauses, before_unsat_lits);
+                trace_move("critical_bool", flipv, change_value, "bool_score", move_score, before_unsat_clauses, before_unsat_lits, tabu_before);
             }
             if(update_outer_best_solution()) no_improve_cnt_bool=0;
             else                              no_improve_cnt_bool++;
@@ -2080,8 +2089,10 @@ bool ls_solver::local_search(){
                 int before_unsat_clauses=unsat_clauses->size();
                 int before_unsat_lits=_lit_in_unsat_clause_num;
                 __int128_t move_score=critical_score(flipv, change_value);
+                int tabu_idx=(change_value>0)?(2*flipv):(2*flipv+1);
+                bool tabu_before=_step<=tabulist[tabu_idx];
                 critical_move(flipv, change_value);
-                trace_move("critical_lia", flipv, change_value, "critical_score", move_score, before_unsat_clauses, before_unsat_lits);
+                trace_move("critical_lia", flipv, change_value, "critical_score", move_score, before_unsat_clauses, before_unsat_lits, tabu_before);
             }
             if(update_inner_best_solution()) no_improve_cnt_lia=0;
             else                               no_improve_cnt_lia++;
