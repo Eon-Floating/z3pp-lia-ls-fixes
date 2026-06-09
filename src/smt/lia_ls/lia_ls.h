@@ -197,6 +197,8 @@ public:
     bool                        update_outer_best_solution();
     void                        configure_trace();
     void                        trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits);
+    void                        trace_state(char const* label);
+    void                        trace_unsat_clauses(char const* label);
     //print
     void                        print_formula();
     void                        print_literal(lit &l);

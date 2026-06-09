@@ -1247,7 +1247,93 @@ void ls_solver::trace_move(char const* source, uint64_t var_idx, __int128_t chan
              <<"\tunsat_clauses_after="<<unsat_clauses->size()
              <<"\tunsat_lits_before="<<before_unsat_lits
              <<"\tunsat_lits_after="<<_lit_in_unsat_clause_num
+              <<"\n";
+}
+
+void ls_solver::trace_state(char const* label){
+    if(std::getenv("LIA_LS_TRACE_STATE")==nullptr){return;}
+    std::cerr<<"lia_ls_trace"
+             <<"\ttype=state_summary"
+             <<"\tlabel="<<label
+             <<"\tstep="<<_step
+             <<"\touter_step="<<_outer_layer_step
+             <<"\tunsat_clauses="<<unsat_clauses->size()
+             <<"\tunsat_lits="<<_lit_in_unsat_clause_num
+             <<"\tvars="<<_num_vars
+             <<"\tclauses="<<_num_clauses
              <<"\n";
+    for(uint64_t var_idx=0; var_idx<_num_vars; var_idx++){
+        std::cerr<<"lia_ls_trace"
+                 <<"\ttype=state_var"
+                 <<"\tlabel="<<label
+                 <<"\tvar_idx="<<var_idx
+                 <<"\tvar="<<_vars[var_idx].var_name
+                 <<"\tmode="<<(_vars[var_idx].is_lia?"lia":"bool")
+                 <<"\tvalue="<<print_128(_solution[var_idx])
+                 <<"\tlow="<<print_128(_vars[var_idx].low_bound)
+                 <<"\tupper="<<print_128(_vars[var_idx].upper_bound)
+                 <<"\tliterals="<<_vars[var_idx].literals.size()
+                 <<"\tlast_forward="<<last_move[2*var_idx]
+                 <<"\tlast_backward="<<last_move[2*var_idx+1]
+                 <<"\n";
+    }
+}
+
+void ls_solver::trace_unsat_clauses(char const* label){
+    if(std::getenv("LIA_LS_TRACE_STATE")==nullptr){return;}
+    for(int i=0; i<unsat_clauses->size(); i++){
+        int clause_idx=unsat_clauses->element_at(i);
+        clause* cp=&(_clauses[clause_idx]);
+        std::cerr<<"lia_ls_trace"
+                 <<"\ttype=unsat_clause"
+                 <<"\tlabel="<<label
+                 <<"\tclause="<<clause_idx
+                 <<"\tweight="<<cp->weight
+                 <<"\tsat_count="<<cp->sat_count
+                 <<"\tlits="<<cp->literals.size()
+                 <<"\tlia_lits="<<cp->lia_literals.size()
+                 <<"\tbool_lits="<<cp->bool_literals.size()
+                 <<"\tmin_delta="<<print_128(cp->min_delta)
+                 <<"\tmin_lit="<<cp->min_delta_lit_index
+                 <<"\n";
+        for(int lit_sign: cp->literals){
+            lit* l=&(_lits[std::abs(lit_sign)]);
+            __int128_t pos_delta=l->delta;
+            convert_to_pos_delta(pos_delta, lit_sign);
+            std::cerr<<"lia_ls_trace"
+                     <<"\ttype=unsat_lit"
+                     <<"\tlabel="<<label
+                     <<"\tclause="<<clause_idx
+                     <<"\tlit="<<lit_sign
+                     <<"\tlit_idx="<<std::abs(lit_sign)
+                     <<"\tkind="<<(l->is_lia_lit?"lia":"bool")
+                     <<"\tis_equal="<<(l->is_equal?1:0)
+                     <<"\tdelta="<<print_128(l->delta)
+                     <<"\tpos_delta="<<print_128(pos_delta);
+            if(l->is_lia_lit){
+                std::cerr<<"\tterms=";
+                bool first=true;
+                for(int j=0; j<l->pos_coff.size(); j++){
+                    int var_idx=l->pos_coff_var_idx[j];
+                    if(!first){std::cerr<<",";}
+                    first=false;
+                    std::cerr<<"+"<<print_128(l->pos_coff[j])<<"*"<<_vars[var_idx].var_name<<"@"<<print_128(_solution[var_idx]);
+                }
+                for(int j=0; j<l->neg_coff.size(); j++){
+                    int var_idx=l->neg_coff_var_idx[j];
+                    if(!first){std::cerr<<",";}
+                    first=false;
+                    std::cerr<<"-"<<print_128(l->neg_coff[j])<<"*"<<_vars[var_idx].var_name<<"@"<<print_128(_solution[var_idx]);
+                }
+                std::cerr<<"\tkey="<<print_128(l->key);
+            }
+            else{
+                int var_idx=(int)l->delta;
+                std::cerr<<"\tvar="<<_vars[var_idx].var_name<<"\tvalue="<<print_128(_solution[var_idx]);
+            }
+            std::cerr<<"\n";
+        }
+    }
 }
 //return the upper round of (a/b): (-3.5)->-4; (3.5)->4
 __int128_t ls_solver::devide(__int128_t a, __int128_t b){
@@ -1957,9 +2043,13 @@ bool ls_solver::local_search(){
     start = std::chrono::steady_clock::now();
     configure_trace();
     initialize();
+    trace_state("initial");
+    trace_unsat_clauses("initial");
     _outer_layer_step=1;
     for(_step=1;_step<_max_step;_step++){
         if(0==unsat_clauses->size()){
+            trace_state("solved");
+            trace_unsat_clauses("solved");
             choose_value_for_pair();
             up_bool_vars();
             // check_solution();
@@ -2000,6 +2090,8 @@ bool ls_solver::local_search(){
         else{swap_from_small_weight_clause();}
         no_improve_cnt=(update_best_solution())?0:(no_improve_cnt+1);
     }
+    trace_state("final");
+    trace_unsat_clauses("final");
     return false;
 }
 
