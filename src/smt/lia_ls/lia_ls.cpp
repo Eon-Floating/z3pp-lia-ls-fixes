@@ -91,6 +91,24 @@ void ls_solver::build_lits(std::string &in_string){
 }
 
 void ls_solver::build_instance(std::vector<std::vector<int> >& clause_vec){
+    bool trace_phases=std::getenv("LIA_LS_TRACE_PHASES")!=nullptr;
+    auto phase_start=std::chrono::steady_clock::now();
+    auto trace_phase=[&](char const* phase){
+        if(!trace_phases){return;}
+        std::chrono::duration<double> elapsed=std::chrono::steady_clock::now()-phase_start;
+        std::cerr<<"lia_ls_trace"
+                 <<"\ttype=phase"
+                 <<"\tphase="<<phase
+                 <<"\telapsed="<<elapsed.count()
+                 <<"\tclauses="<<_num_clauses
+                 <<"\tlits="<<_num_lits
+                 <<"\tresolution_vars="<<_resolution_vars.size()
+                 <<"\tvars="<<_vars.size()
+                 <<"\tbool_vars="<<bool_var_vec.size()
+                 <<"\tlia_vars="<<lia_var_vec.size()
+                 <<"\n";
+    };
+    trace_phase("build_instance_start");
     for(int clause_idx=0;clause_idx<clause_vec.size();clause_idx++){
         if(clause_vec[clause_idx].size()==1){
             lit *l=&(_lits[std::abs(clause_vec[clause_idx][0])]);
@@ -115,7 +133,9 @@ void ls_solver::build_instance(std::vector<std::vector<int> >& clause_vec){
             }
         }
     }
+    trace_phase("bounds_done");
     reduce_vars();
+    trace_phase("reduce_vars_done");
     _clauses.resize(clause_vec.size());
     _num_clauses=0;
     for (auto clause_curr:clause_vec) {
@@ -131,15 +151,22 @@ void ls_solver::build_instance(std::vector<std::vector<int> >& clause_vec){
         _num_clauses++;
     }
     _clauses.resize(_num_clauses);
+    trace_phase("clauses_loaded");
     //now the vars are all in the resolution vars
     unit_prop();
+    trace_phase("unit_prop_1_done");
     resolution();
+    trace_phase("resolution_done");
     unit_prop();
+    trace_phase("unit_prop_2_done");
     reduce_clause();
+    trace_phase("reduce_clause_done");
 //    print_formula();
     best_found_cost=(int)_num_clauses;
     make_space();
+    trace_phase("make_space_done");
     set_pre_value();
+    trace_phase("set_pre_value_done");
     int average_lits_num=0;
     for(int var_idx=0;var_idx<_num_vars;var_idx++){average_lits_num+=_vars[var_idx].literals.size();}
     average_lits_num/=_num_vars+1;
@@ -387,11 +414,26 @@ void ls_solver::unit_prop(){
 }
 
 void ls_solver::resolution(){
+    bool trace_phases=std::getenv("LIA_LS_TRACE_PHASES")!=nullptr;
+    auto resolution_start=std::chrono::steady_clock::now();
     std::vector<uint64_t> pos_clauses(10*_num_clauses);
     std::vector<uint64_t> neg_clauses(10*_num_clauses);
     int pos_clause_size,neg_clause_size;
     bool is_improve=true;
+    int resolution_round=0;
     while(is_improve){
+        resolution_round++;
+        if(trace_phases){
+            std::chrono::duration<double> elapsed=std::chrono::steady_clock::now()-resolution_start;
+            std::cerr<<"lia_ls_trace"
+                     <<"\ttype=resolution"
+                     <<"\tevent=round_start"
+                     <<"\tround="<<resolution_round
+                     <<"\telapsed="<<elapsed.count()
+                     <<"\tclauses="<<_num_clauses
+                     <<"\tbool_vars="<<bool_var_vec.size()
+                     <<"\n";
+        }
         is_improve=false;
     for(uint64_t bool_var_idx:bool_var_vec){
         if(_resolution_vars[bool_var_idx].is_delete)continue;
@@ -409,6 +451,19 @@ void ls_solver::resolution(){
                 }
             }
         }//determine the pos_clause and neg_clause
+        if(trace_phases&&(pos_clause_size+neg_clause_size>=1000||((uint64_t)pos_clause_size*neg_clause_size>=1000000))){
+            std::chrono::duration<double> elapsed=std::chrono::steady_clock::now()-resolution_start;
+            std::cerr<<"lia_ls_trace"
+                     <<"\ttype=resolution"
+                     <<"\tevent=large_var"
+                     <<"\tround="<<resolution_round
+                     <<"\telapsed="<<elapsed.count()
+                     <<"\tbool_var="<<bool_var_idx
+                     <<"\tpos="<<pos_clause_size
+                     <<"\tneg="<<neg_clause_size
+                     <<"\tclauses="<<_num_clauses
+                     <<"\n";
+        }
         int tautology_num=0;
         for(int i=0;i<pos_clause_size;i++){//pos clause X neg clause
             uint64_t pos_clause_idx=pos_clauses[i];
