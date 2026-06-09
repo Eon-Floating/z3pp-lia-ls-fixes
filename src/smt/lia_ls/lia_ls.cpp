@@ -741,7 +741,6 @@ void ls_solver::make_space(){
     operation_var_idx_bool_vec.resize(_num_opt+_additional_len);
     operation_change_value_vec.resize(_num_opt+_additional_len);
     last_move.resize(2*_num_vars+_additional_len,0);
-    last_change_value.resize(_num_vars+_additional_len,0);
     unsat_clauses=new Array((int)_num_clauses+(int)_additional_len);
     sat_clause_with_false_literal=new Array((int)_num_clauses+(int)_additional_len);
     lit_occur=new Array((int)_num_lits);
@@ -844,7 +843,6 @@ void ls_solver::random_walk(){
     int best_operation_idx=0;
     int best_operation_idx_bool=0;
     uint64_t best_last_move=UINT64_MAX;
-    bool best_reverse_penalty=true;
     uint64_t best_last_move_bool=UINT64_MAX;
     uint64_t last_move_step;
     operation_idx=0;
@@ -907,15 +905,12 @@ void ls_solver::random_walk(){
         var_idx=operation_var_idx_vec[i];
         change_value=operation_change_value_vec[i];
         subscore=critical_subscore(var_idx, change_value);
-        bool reverse_penalty=should_avoid_reverse(var_idx, change_value);
         operation_direction=(change_value>0)?0:1;
         last_move_step=last_move[2*var_idx+(operation_direction+1)%2];
-        if((best_reverse_penalty&& !reverse_penalty)||
-           (best_reverse_penalty==reverse_penalty&&(subscore<best_subscore||(subscore==best_subscore&&last_move_step<best_last_move)))){
+        if(subscore<best_subscore||(subscore==best_subscore&&last_move_step<best_last_move)){
             best_subscore=subscore;
             best_last_move=last_move_step;
             best_operation_idx=i;
-            best_reverse_penalty=reverse_penalty;
         }
     }
     for(int i=0;i<operation_idx_bool;i++){
@@ -1051,7 +1046,6 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
     best_var_idx=-1;
     change_value=0;
     uint64_t best_last_move=UINT64_MAX;
-    bool best_reverse_penalty=true;
     int        operation_idx=0;
     //determine the critical value
     for(int i=0;i<unsat_clauses->size();i++){
@@ -1131,15 +1125,13 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
             operation_var_idx=operation_var_idx_vec[i];
         }
         score=critical_score(operation_var_idx,operation_change_value);
-        bool reverse_penalty=score==0&&should_avoid_reverse(operation_var_idx, operation_change_value);
         int opposite_direction=(operation_change_value>0)?1:0;//if the change value is >0, then means it is moving forward, the opposite direction is 1(backward)
         uint64_t last_move_step=last_move[2*operation_var_idx+opposite_direction];
-        if(score>best_score||(score==best_score&&((best_reverse_penalty&& !reverse_penalty)||(best_reverse_penalty==reverse_penalty&&last_move_step<best_last_move)))){
+        if(score>best_score||(score==best_score&&last_move_step<best_last_move)){
                 best_score=score;
                 best_var_idx=operation_var_idx;
                 best_value=operation_change_value;
                 best_last_move=last_move_step;
-                best_reverse_penalty=reverse_penalty;
             }
     }
     //if there is untabu decreasing move
@@ -1154,15 +1146,13 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
             operation_change_value=operation_change_value_vec[i];
             operation_var_idx=operation_var_idx_vec[i];
             score=critical_score(operation_var_idx,operation_change_value);
-            bool reverse_penalty=score==0&&should_avoid_reverse(operation_var_idx, operation_change_value);
             int opposite_direction=(operation_change_value>0)?1:0;
             uint64_t last_move_step=last_move[2*operation_var_idx+opposite_direction];
-            if(score>best_score||(score==best_score&&((best_reverse_penalty&& !reverse_penalty)||(best_reverse_penalty==reverse_penalty&&last_move_step<best_last_move)))){
+            if(score>best_score||(score==best_score&&last_move_step<best_last_move)){
                 best_score=score;
                 best_var_idx=operation_var_idx;
                 best_value=operation_change_value;
                 best_last_move=last_move_step;
-                best_reverse_penalty=reverse_penalty;
             }
         }
         if(best_var_idx!=-1){return best_var_idx;}
@@ -1189,7 +1179,6 @@ void ls_solver::critical_move(uint64_t var_idx, __int128_t change_value){
     //step
     if(_vars[var_idx].is_lia){
     last_move[2*var_idx+direction]=_step;
-    last_change_value[var_idx]=change_value;
     tabulist[var_idx*2+(direction+1)%2]=_step+3+mt()%10;
     if(CC_mode!=-1){modify_CC(var_idx,direction);}
     }
@@ -1234,20 +1223,11 @@ void ls_solver::clear_prev_data(){
 
 void ls_solver::configure_trace(){
     _trace_moves=std::getenv("LIA_LS_TRACE_MOVES")!=nullptr;
-    _avoid_reversal=std::getenv("LIA_LS_AVOID_REVERSAL")!=nullptr;
     _trace_move_count=0;
     _trace_move_limit=0;
     if(char const* limit=std::getenv("LIA_LS_TRACE_MOVE_LIMIT")){
         _trace_move_limit=std::strtoull(limit, nullptr, 10);
     }
-}
-
-bool ls_solver::should_avoid_reverse(uint64_t var_idx, __int128_t change_value){
-    if(!_avoid_reversal){return false;}
-    if(change_value==0||unsat_clauses->size()>3){return false;}
-    if(last_change_value[var_idx]!=-change_value){return false;}
-    int tabu_idx=(change_value>0)?(2*var_idx):(2*var_idx+1);
-    return _step<=tabulist[tabu_idx];
 }
 
 void ls_solver::trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits, bool tabu_before){

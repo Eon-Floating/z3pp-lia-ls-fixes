@@ -111,7 +111,6 @@ public:
     std::vector<bool>           is_chosen_bool_var;
     int                          CC_mode;
     std::vector<uint64_t>       last_move;
-    std::vector<__int128_t>     last_change_value;
     std::vector<int>            operation_var_idx_vec;
     std::vector<__int128_t>        operation_change_value_vec;
     std::vector<int>             operation_var_idx_bool_vec;
@@ -134,7 +133,6 @@ public:
     int                         _lit_in_unsat_clause_num;
     int                         _bool_lit_in_unsat_clause_num;
     bool                        _trace_moves=false;
-    bool                        _avoid_reversal=false;
     uint64_t                    _trace_move_count=0;
     uint64_t                    _trace_move_limit=0;
     
@@ -198,7 +196,6 @@ public:
     bool                        update_inner_best_solution();
     bool                        update_outer_best_solution();
     void                        configure_trace();
-    bool                        should_avoid_reverse(uint64_t var_idx, __int128_t change_value);
     void                        trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits, bool tabu_before);
     void                        trace_state(char const* label);
     void                        trace_unsat_clauses(char const* label);
