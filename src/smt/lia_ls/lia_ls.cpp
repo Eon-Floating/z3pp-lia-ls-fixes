@@ -900,6 +900,8 @@ void ls_solver::random_walk(){
         }
     }
     for(int i=0;i<operation_idx_bool;i++){is_chosen_bool_var[operation_var_idx_bool_vec[i]]=false;}
+    _trace_last_candidates_lia=operation_idx;
+    _trace_last_candidates_bool=operation_idx_bool;
     //choose the best operation
     for(int i=0;i<operation_idx;i++){
         var_idx=operation_var_idx_vec[i];
@@ -1009,6 +1011,8 @@ int ls_solver::pick_critical_move_bool(){
         }
     }
     for(int i=0;i<operation_idx;i++){is_chosen_bool_var[operation_var_idx_bool_vec[i]]=false;}// recover chosen_bool_var
+    _trace_last_candidates_lia=0;
+    _trace_last_candidates_bool=operation_idx;
     if(operation_idx>45){BMS=true;cnt=45;}
     else{BMS=false;cnt=operation_idx;}
     for(int i=0;i<cnt;i++){
@@ -1110,6 +1114,8 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
         }
     }
     //go through the forward and backward move of vars, evaluate their score, pick the untabued best one
+    _trace_last_candidates_lia=operation_idx;
+    _trace_last_candidates_bool=0;
     if(operation_idx>45){BMS=true;cnt=45;}
     else{BMS=false;cnt=operation_idx;}
     for(int i=0;i<cnt;i++){
@@ -1155,6 +1161,8 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
                 best_last_move=last_move_step;
             }
         }
+        _trace_last_candidates_lia=operation_idx;
+        _trace_last_candidates_bool=0;
         if(best_var_idx!=-1){return best_var_idx;}
     }
     //update weight and random walk
@@ -1223,34 +1231,170 @@ void ls_solver::clear_prev_data(){
 
 void ls_solver::configure_trace(){
     _trace_moves=std::getenv("LIA_LS_TRACE_MOVES")!=nullptr;
+    _trace_summary=std::getenv("LIA_LS_TRACE_SUMMARY")!=nullptr;
     _trace_move_count=0;
     _trace_move_limit=0;
     if(char const* limit=std::getenv("LIA_LS_TRACE_MOVE_LIMIT")){
         _trace_move_limit=std::strtoull(limit, nullptr, 10);
     }
+    if(char const* window=std::getenv("LIA_LS_TRACE_SUMMARY_WINDOW")){
+        uint64_t parsed=std::strtoull(window, nullptr, 10);
+        if(parsed>0){_trace_summary_window=parsed;}
+    }
+    if(char const* threshold=std::getenv("LIA_LS_TRACE_LOW_UNSAT")){
+        _trace_low_unsat_threshold=std::atoi(threshold);
+    }
+    _trace_window_moves=0;
+    _trace_window_first_step=0;
+    _trace_window_first_unsat=0;
+    _trace_window_last_unsat=0;
+    _trace_window_min_unsat=INT32_MAX;
+    _trace_window_max_unsat=0;
+    _trace_window_first_lits=0;
+    _trace_window_last_lits=0;
+    _trace_window_lia=0;
+    _trace_window_bool=0;
+    _trace_window_critical_lia=0;
+    _trace_window_critical_bool=0;
+    _trace_window_random_walk=0;
+    _trace_window_swap=0;
+    _trace_window_score_neg=0;
+    _trace_window_score_zero=0;
+    _trace_window_score_pos=0;
+    _trace_window_zero_lit_change=0;
+    _trace_window_repeat_var=0;
+    _trace_window_reversal=0;
+    _trace_window_tabu=0;
+    _trace_prev_var_idx=UINT64_MAX;
+    _trace_prev_change=0;
+    _trace_last_candidates_lia=-1;
+    _trace_last_candidates_bool=-1;
 }
 
 void ls_solver::trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits, bool tabu_before){
-    if(!_trace_moves){return;}
-    if(_trace_move_limit!=0&&_trace_move_count>=_trace_move_limit){return;}
-    _trace_move_count++;
+    if(!_trace_moves&&!_trace_summary){
+        _trace_last_candidates_lia=-1;
+        _trace_last_candidates_bool=-1;
+        return;
+    }
+    bool repeat_var=(_trace_prev_var_idx==var_idx);
+    bool reversal=repeat_var&&(_vars[var_idx].is_lia?(change_value==-_trace_prev_change):true);
+    if(_trace_moves&&(_trace_move_limit==0||_trace_move_count<_trace_move_limit)){
+        _trace_move_count++;
+        std::cerr<<"lia_ls_trace"
+                 <<"\ttype=move"
+                 <<"\tstep="<<_step
+                 <<"\touter_step="<<_outer_layer_step
+                 <<"\tsource="<<source
+                 <<"\tmode="<<(_vars[var_idx].is_lia?"lia":"bool")
+                 <<"\tvar_idx="<<var_idx
+                 <<"\tvar="<<_vars[var_idx].var_name
+                 <<"\tchange="<<print_128(change_value)
+                 <<"\tscore_kind="<<score_kind
+                 <<"\tscore="<<print_128(score)
+                 <<"\ttabu_before="<<(tabu_before?1:0)
+                 <<"\trepeat_var="<<(repeat_var?1:0)
+                 <<"\treversal="<<(reversal?1:0)
+                 <<"\tcandidates_lia="<<_trace_last_candidates_lia
+                 <<"\tcandidates_bool="<<_trace_last_candidates_bool
+                 <<"\tunsat_clauses_before="<<before_unsat_clauses
+                 <<"\tunsat_clauses_after="<<unsat_clauses->size()
+                 <<"\tunsat_clause_delta="<<(unsat_clauses->size()-before_unsat_clauses)
+                 <<"\tunsat_lits_before="<<before_unsat_lits
+                 <<"\tunsat_lits_after="<<_lit_in_unsat_clause_num
+                 <<"\tunsat_lit_delta="<<(_lit_in_unsat_clause_num-before_unsat_lits)
+                  <<"\n";
+    }
+    trace_window_move(source, var_idx, change_value, score, before_unsat_clauses, before_unsat_lits, tabu_before, repeat_var, reversal);
+    _trace_prev_var_idx=var_idx;
+    _trace_prev_change=change_value;
+    _trace_last_candidates_lia=-1;
+    _trace_last_candidates_bool=-1;
+}
+
+void ls_solver::trace_window_move(char const* source, uint64_t var_idx, __int128_t, __int128_t score, int before_unsat_clauses, int before_unsat_lits, bool tabu_before, bool repeat_var, bool reversal){
+    if(!_trace_summary){return;}
+    int after_unsat=unsat_clauses->size();
+    if(_trace_window_moves==0){
+        _trace_window_first_step=_step;
+        _trace_window_first_unsat=before_unsat_clauses;
+        _trace_window_first_lits=before_unsat_lits;
+        _trace_window_min_unsat=before_unsat_clauses;
+        _trace_window_max_unsat=before_unsat_clauses;
+    }
+    _trace_window_moves++;
+    _trace_window_last_unsat=after_unsat;
+    _trace_window_last_lits=_lit_in_unsat_clause_num;
+    if(after_unsat<_trace_window_min_unsat){_trace_window_min_unsat=after_unsat;}
+    if(after_unsat>_trace_window_max_unsat){_trace_window_max_unsat=after_unsat;}
+    if(_vars[var_idx].is_lia){_trace_window_lia++;}
+    else{_trace_window_bool++;}
+    if(strcmp(source,"critical_lia")==0){_trace_window_critical_lia++;}
+    else if(strcmp(source,"critical_bool")==0){_trace_window_critical_bool++;}
+    else if(strcmp(source,"random_walk")==0){_trace_window_random_walk++;}
+    else if(strcmp(source,"swap")==0){_trace_window_swap++;}
+    if(score<0){_trace_window_score_neg++;}
+    else if(score==0){
+        _trace_window_score_zero++;
+        if(_lit_in_unsat_clause_num!=before_unsat_lits){_trace_window_zero_lit_change++;}
+    }
+    else{_trace_window_score_pos++;}
+    if(repeat_var){_trace_window_repeat_var++;}
+    if(reversal){_trace_window_reversal++;}
+    if(tabu_before){_trace_window_tabu++;}
+    if(_trace_window_moves>=_trace_summary_window){trace_window_summary("window");}
+}
+
+void ls_solver::trace_window_summary(char const* reason){
+    if(!_trace_summary||_trace_window_moves==0){return;}
     std::cerr<<"lia_ls_trace"
-             <<"\ttype=move"
-             <<"\tstep="<<_step
-             <<"\touter_step="<<_outer_layer_step
-             <<"\tsource="<<source
-             <<"\tmode="<<(_vars[var_idx].is_lia?"lia":"bool")
-             <<"\tvar_idx="<<var_idx
-             <<"\tvar="<<_vars[var_idx].var_name
-             <<"\tchange="<<print_128(change_value)
-             <<"\tscore_kind="<<score_kind
-             <<"\tscore="<<print_128(score)
-             <<"\ttabu_before="<<(tabu_before?1:0)
-             <<"\tunsat_clauses_before="<<before_unsat_clauses
-             <<"\tunsat_clauses_after="<<unsat_clauses->size()
-             <<"\tunsat_lits_before="<<before_unsat_lits
-             <<"\tunsat_lits_after="<<_lit_in_unsat_clause_num
-              <<"\n";
+             <<"\ttype=window_summary"
+             <<"\treason="<<reason
+             <<"\tstep_start="<<_trace_window_first_step
+             <<"\tstep_end="<<_step
+             <<"\tmoves="<<_trace_window_moves
+             <<"\tlow_unsat="<<((_trace_window_min_unsat<=_trace_low_unsat_threshold)?1:0)
+             <<"\tunsat_first="<<_trace_window_first_unsat
+             <<"\tunsat_last="<<_trace_window_last_unsat
+             <<"\tunsat_min="<<_trace_window_min_unsat
+             <<"\tunsat_max="<<_trace_window_max_unsat
+             <<"\tunsat_lits_first="<<_trace_window_first_lits
+             <<"\tunsat_lits_last="<<_trace_window_last_lits
+             <<"\tmode_lia="<<_trace_window_lia
+             <<"\tmode_bool="<<_trace_window_bool
+             <<"\tsource_critical_lia="<<_trace_window_critical_lia
+             <<"\tsource_critical_bool="<<_trace_window_critical_bool
+             <<"\tsource_random_walk="<<_trace_window_random_walk
+             <<"\tsource_swap="<<_trace_window_swap
+             <<"\tscore_neg="<<_trace_window_score_neg
+             <<"\tscore_zero="<<_trace_window_score_zero
+             <<"\tscore_pos="<<_trace_window_score_pos
+             <<"\tzero_score_lit_change="<<_trace_window_zero_lit_change
+             <<"\trepeat_var="<<_trace_window_repeat_var
+             <<"\treversal="<<_trace_window_reversal
+             <<"\ttabu_before="<<_trace_window_tabu
+             <<"\n";
+    _trace_window_moves=0;
+    _trace_window_first_step=0;
+    _trace_window_first_unsat=0;
+    _trace_window_last_unsat=0;
+    _trace_window_min_unsat=INT32_MAX;
+    _trace_window_max_unsat=0;
+    _trace_window_first_lits=0;
+    _trace_window_last_lits=0;
+    _trace_window_lia=0;
+    _trace_window_bool=0;
+    _trace_window_critical_lia=0;
+    _trace_window_critical_bool=0;
+    _trace_window_random_walk=0;
+    _trace_window_swap=0;
+    _trace_window_score_neg=0;
+    _trace_window_score_zero=0;
+    _trace_window_score_pos=0;
+    _trace_window_zero_lit_change=0;
+    _trace_window_repeat_var=0;
+    _trace_window_reversal=0;
+    _trace_window_tabu=0;
 }
 
 void ls_solver::trace_state(char const* label){
@@ -2056,6 +2200,7 @@ bool ls_solver::local_search(){
     _outer_layer_step=1;
     for(_step=1;_step<_max_step;_step++){
         if(0==unsat_clauses->size()){
+            trace_window_summary("solved");
             trace_state("solved");
             trace_unsat_clauses("solved");
             choose_value_for_pair();
@@ -2101,6 +2246,7 @@ bool ls_solver::local_search(){
         else{swap_from_small_weight_clause();}
         no_improve_cnt=(update_best_solution())?0:(no_improve_cnt+1);
     }
+    trace_window_summary("final");
     trace_state("final");
     trace_unsat_clauses("final");
     return false;

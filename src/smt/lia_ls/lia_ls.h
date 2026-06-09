@@ -133,8 +133,36 @@ public:
     int                         _lit_in_unsat_clause_num;
     int                         _bool_lit_in_unsat_clause_num;
     bool                        _trace_moves=false;
+    bool                        _trace_summary=false;
     uint64_t                    _trace_move_count=0;
     uint64_t                    _trace_move_limit=0;
+    uint64_t                    _trace_summary_window=500;
+    int                         _trace_low_unsat_threshold=20;
+    uint64_t                    _trace_window_moves=0;
+    uint64_t                    _trace_window_first_step=0;
+    int                         _trace_window_first_unsat=0;
+    int                         _trace_window_last_unsat=0;
+    int                         _trace_window_min_unsat=INT32_MAX;
+    int                         _trace_window_max_unsat=0;
+    int                         _trace_window_first_lits=0;
+    int                         _trace_window_last_lits=0;
+    uint64_t                    _trace_window_lia=0;
+    uint64_t                    _trace_window_bool=0;
+    uint64_t                    _trace_window_critical_lia=0;
+    uint64_t                    _trace_window_critical_bool=0;
+    uint64_t                    _trace_window_random_walk=0;
+    uint64_t                    _trace_window_swap=0;
+    uint64_t                    _trace_window_score_neg=0;
+    uint64_t                    _trace_window_score_zero=0;
+    uint64_t                    _trace_window_score_pos=0;
+    uint64_t                    _trace_window_zero_lit_change=0;
+    uint64_t                    _trace_window_repeat_var=0;
+    uint64_t                    _trace_window_reversal=0;
+    uint64_t                    _trace_window_tabu=0;
+    uint64_t                    _trace_prev_var_idx=UINT64_MAX;
+    __int128_t                  _trace_prev_change=0;
+    int                         _trace_last_candidates_lia=-1;
+    int                         _trace_last_candidates_bool=-1;
     
     //input transformation
     void                        split_string(std::string &in_string, std::vector<std::string> &str_vec,std::string pattern);
@@ -197,6 +225,8 @@ public:
     bool                        update_outer_best_solution();
     void                        configure_trace();
     void                        trace_move(char const* source, uint64_t var_idx, __int128_t change_value, char const* score_kind, __int128_t score, int before_unsat_clauses, int before_unsat_lits, bool tabu_before);
+    void                        trace_window_move(char const* source, uint64_t var_idx, __int128_t change_value, __int128_t score, int before_unsat_clauses, int before_unsat_lits, bool tabu_before, bool repeat_var, bool reversal);
+    void                        trace_window_summary(char const* reason);
     void                        trace_state(char const* label);
     void                        trace_unsat_clauses(char const* label);
     //print
