@@ -1044,6 +1044,7 @@ int ls_solver::pick_critical_move_bool(){
 int ls_solver::pick_critical_move(__int128_t &best_value){
     int best_score,score,operation_var_idx,best_var_idx,cnt;
     __int128_t operation_change_value,change_value;
+    size_t best_zero_occurs=SIZE_MAX;
     bool BMS=false;
     bool should_push_vec;
     best_score=(is_idl)?0:1;
@@ -1133,11 +1134,18 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
         score=critical_score(operation_var_idx,operation_change_value);
         int opposite_direction=(operation_change_value>0)?1:0;//if the change value is >0, then means it is moving forward, the opposite direction is 1(backward)
         uint64_t last_move_step=last_move[2*operation_var_idx+opposite_direction];
-        if(score>best_score||(score==best_score&&last_move_step<best_last_move)){
+        size_t zero_occurs=0;
+        bool better_zero_tie=false;
+        if(score==0&&best_score==0){
+            zero_occurs=_vars[operation_var_idx].literals.size();
+            better_zero_tie=(zero_occurs<best_zero_occurs)||(zero_occurs==best_zero_occurs&&last_move_step<best_last_move);
+        }
+        if(score>best_score||(score==best_score&&((score==0&&better_zero_tie)||(score!=0&&last_move_step<best_last_move)))){
                 best_score=score;
                 best_var_idx=operation_var_idx;
                 best_value=operation_change_value;
                 best_last_move=last_move_step;
+                if(score==0){best_zero_occurs=zero_occurs;}
             }
     }
     //if there is untabu decreasing move
@@ -1145,6 +1153,7 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
     //choose from swap operations if there is no decreasing unsat critical
     if(!sat_clause_with_false_literal->empty()){
         best_score=0;
+        best_zero_occurs=SIZE_MAX;
         operation_idx=0;
         for(int i=0;operation_idx<20&&i<50;i++){
             add_swap_operation(operation_idx);}
@@ -1154,11 +1163,18 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
             score=critical_score(operation_var_idx,operation_change_value);
             int opposite_direction=(operation_change_value>0)?1:0;
             uint64_t last_move_step=last_move[2*operation_var_idx+opposite_direction];
-            if(score>best_score||(score==best_score&&last_move_step<best_last_move)){
+            size_t zero_occurs=0;
+            bool better_zero_tie=false;
+            if(score==0&&best_score==0){
+                zero_occurs=_vars[operation_var_idx].literals.size();
+                better_zero_tie=(zero_occurs<best_zero_occurs)||(zero_occurs==best_zero_occurs&&last_move_step<best_last_move);
+            }
+            if(score>best_score||(score==best_score&&((score==0&&better_zero_tie)||(score!=0&&last_move_step<best_last_move)))){
                 best_score=score;
                 best_var_idx=operation_var_idx;
                 best_value=operation_change_value;
                 best_last_move=last_move_step;
+                if(score==0){best_zero_occurs=zero_occurs;}
             }
         }
         _trace_last_candidates_lia=operation_idx;
