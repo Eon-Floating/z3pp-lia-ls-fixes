@@ -1505,6 +1505,10 @@ __int128_t ls_solver::devide(__int128_t a, __int128_t b){
     return a>0?up_round:-up_round;
 }
 void ls_solver::insert_operation(int var_idx,__int128_t change_value,int &operation_idx){
+    if(operation_idx >= static_cast<int>(operation_var_idx_vec.size())){
+        operation_var_idx_vec.resize(operation_idx + _additional_len + 1);
+        operation_change_value_vec.resize(operation_idx + _additional_len + 1);
+    }
     __int128_t future_solution=_solution[var_idx]+change_value;
     bool no_pre_value=(_pre_value_1[var_idx]==INT32_MAX&&_pre_value_2[var_idx]==INT32_MAX&&future_solution>=_vars[var_idx].low_bound&&future_solution<=_vars[var_idx].upper_bound);
     bool has_pre_value_1=(_pre_value_1[var_idx]!=INT32_MAX&&_pre_value_2[var_idx]==INT32_MAX&&future_solution==_pre_value_1[var_idx]);
@@ -1952,6 +1956,7 @@ __int128_t ls_solver::critical_subscore(uint64_t var_idx, __int128_t change_valu
 //sat or unsat a clause, update the delta, dedicated for lia var
 void ls_solver::critical_score_subscore(uint64_t var_idx, __int128_t change_value){
     static std::vector<int> lit_exist(_num_lits+_additional_len,0);
+    if(lit_exist.size() < _num_lits + _additional_len){lit_exist.resize(_num_lits + _additional_len,0);}
     variable * var=&(_vars[var_idx]);
     lit *l;
     clause *cp;
@@ -2051,6 +2056,7 @@ void ls_solver::critical_score_subscore(uint64_t var_idx, __int128_t change_valu
     }
     for(int i=0;i<var->literals.size();i++){
         lit_idx=std::abs(var->literals[i]);
+        if(lit_idx >= static_cast<int>(lit_exist.size())){lit_exist.resize(lit_idx + _additional_len + 1,0);}
         if(lit_exist[lit_idx]==0){
             l=&(_lits[lit_idx]);
             l->delta+=(var->literal_coff[i]*change_value);
