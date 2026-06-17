@@ -224,6 +224,7 @@ void ls_solver::reduce_vars(){
     std::vector<int> occur_time(tmp_vars_size,0);//occur_time[a]=n means that a has occured in lits for n times
     pair_x=new Array((int)tmp_vars_size);
     pair_y=new Array((int)tmp_vars_size);
+    if(tmp_vars_size==0){return;}
     lit *l;
     variable * original_var;
     variable * new_var;
