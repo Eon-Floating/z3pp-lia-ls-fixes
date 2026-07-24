@@ -417,6 +417,7 @@ void ls_solver::unit_prop(){
 void ls_solver::resolution(){
     bool trace_phases=std::getenv("LIA_LS_TRACE_PHASES")!=nullptr;
     auto resolution_start=std::chrono::steady_clock::now();
+    uint64_t initial_num_clauses=_num_clauses;
     std::vector<uint64_t> pos_clauses(10*_num_clauses);
     std::vector<uint64_t> neg_clauses(10*_num_clauses);
     int pos_clause_size,neg_clause_size;
@@ -437,6 +438,7 @@ void ls_solver::resolution(){
         }
         is_improve=false;
     for(uint64_t bool_var_idx:bool_var_vec){
+        if(_num_clauses>2*initial_num_clauses){return;}
         if(_resolution_vars[bool_var_idx].is_delete)continue;
         pos_clause_size=0;neg_clause_size=0;
         for(int i=0;i<_resolution_vars[bool_var_idx].clause_idxs.size();i++){
@@ -452,6 +454,8 @@ void ls_solver::resolution(){
                 }
             }
         }//determine the pos_clause and neg_clause
+        uint64_t resolution_pairs=static_cast<uint64_t>(pos_clause_size)*neg_clause_size;
+        if(_num_clauses>initial_num_clauses+initial_num_clauses/2&&resolution_pairs>100000){continue;}
         if(trace_phases&&(pos_clause_size+neg_clause_size>=1000||((uint64_t)pos_clause_size*neg_clause_size>=1000000))){
             std::chrono::duration<double> elapsed=std::chrono::steady_clock::now()-resolution_start;
             std::cerr<<"lia_ls_trace"
@@ -1133,6 +1137,10 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
             operation_var_idx=operation_var_idx_vec[i];
         }
         score=critical_score(operation_var_idx,operation_change_value);
+        int tabu_idx=(operation_change_value>0)?(2*operation_var_idx):(2*operation_var_idx+1);
+        bool tabu_before=_step<=tabulist[tabu_idx];
+        bool reversal=(_last_lia_move_var_idx==static_cast<uint64_t>(operation_var_idx)&&operation_change_value==-_last_lia_move_change);
+        if(unsat_clauses->size()<=5&&_bool_lit_in_unsat_clause_num==0&&score==0&&reversal&&tabu_before){continue;}
         int opposite_direction=(operation_change_value>0)?1:0;//if the change value is >0, then means it is moving forward, the opposite direction is 1(backward)
         uint64_t last_move_step=last_move[2*operation_var_idx+opposite_direction];
         size_t zero_occurs=0;
@@ -1162,6 +1170,10 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
             operation_change_value=operation_change_value_vec[i];
             operation_var_idx=operation_var_idx_vec[i];
             score=critical_score(operation_var_idx,operation_change_value);
+            int tabu_idx=(operation_change_value>0)?(2*operation_var_idx):(2*operation_var_idx+1);
+            bool tabu_before=_step<=tabulist[tabu_idx];
+            bool reversal=(_last_lia_move_var_idx==static_cast<uint64_t>(operation_var_idx)&&operation_change_value==-_last_lia_move_change);
+            if(unsat_clauses->size()<=5&&_bool_lit_in_unsat_clause_num==0&&score==0&&reversal&&tabu_before){continue;}
             int opposite_direction=(operation_change_value>0)?1:0;
             uint64_t last_move_step=last_move[2*operation_var_idx+opposite_direction];
             size_t zero_occurs=0;
@@ -1206,6 +1218,8 @@ void ls_solver::critical_move(uint64_t var_idx, __int128_t change_value){
     last_move[2*var_idx+direction]=_step;
     tabulist[var_idx*2+(direction+1)%2]=_step+3+mt()%10;
     if(CC_mode!=-1){modify_CC(var_idx,direction);}
+    _last_lia_move_var_idx=var_idx;
+    _last_lia_move_change=change_value;
     }
     else{
         last_move[2*var_idx]=_outer_layer_step;
@@ -1284,6 +1298,8 @@ void ls_solver::configure_trace(){
     _trace_window_tabu=0;
     _trace_prev_var_idx=UINT64_MAX;
     _trace_prev_change=0;
+    _last_lia_move_var_idx=UINT64_MAX;
+    _last_lia_move_change=0;
     _trace_last_candidates_lia=-1;
     _trace_last_candidates_bool=-1;
 }

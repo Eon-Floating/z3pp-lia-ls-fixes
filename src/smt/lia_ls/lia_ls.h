@@ -114,6 +114,8 @@ public:
     std::vector<int>            operation_var_idx_vec;
     std::vector<__int128_t>        operation_change_value_vec;
     std::vector<int>             operation_var_idx_bool_vec;
+    uint64_t                    _last_lia_move_var_idx=UINT64_MAX;
+    __int128_t                  _last_lia_move_change=0;
     std::chrono::steady_clock::time_point start;
     double                      best_cost_time;
     double                      _cutoff;
