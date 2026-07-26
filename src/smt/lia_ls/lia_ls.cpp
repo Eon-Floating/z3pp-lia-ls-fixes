@@ -1,6 +1,9 @@
 #include "smt/lia_ls/lia_ls.h"
 #include <sstream>
 namespace lia{
+static constexpr int random_walk_performed=-1;
+static constexpr int no_move_performed=-2;
+
 //input transformation
 void ls_solver::split_string(std::string &in_string, std::vector<std::string> &str_vec,std::string pattern=" "){
     std::string::size_type pos;
@@ -838,7 +841,7 @@ void ls_solver::smooth_clause_weight(){
     }
 }
 
-void ls_solver::random_walk(){
+bool ls_solver::random_walk(){
     int clause_idx,operation_idx,var_idx,operation_direction;
     __int128_t change_value;
     __int128_t best_subscore=INT64_MAX;
@@ -931,7 +934,7 @@ void ls_solver::random_walk(){
         }
     }
     //make move
-    if(operation_idx+operation_idx_bool==0){return;}
+    if(operation_idx+operation_idx_bool==0){return false;}
     char const* score_kind;
     __int128_t move_score;
     if(operation_idx_bool==0||(operation_idx>0&&operation_idx_bool>0&&!is_in_bool_search)){
@@ -952,6 +955,7 @@ void ls_solver::random_walk(){
     bool tabu_before=_step<=tabulist[tabu_idx];
     critical_move(var_idx, change_value);
     trace_move("random_walk", var_idx, change_value, score_kind, move_score, before_unsat_clauses, before_unsat_lits, tabu_before);
+    return true;
 }
 
 //construction
@@ -1042,8 +1046,7 @@ int ls_solver::pick_critical_move_bool(){
     //update weight
     if(mt()%10000>smooth_probability){update_clause_weight();}
     else {smooth_clause_weight();}
-    random_walk();
-    return -1;
+    return random_walk()?random_walk_performed:no_move_performed;
 }
 
 int ls_solver::pick_critical_move(__int128_t &best_value){
@@ -1197,8 +1200,7 @@ int ls_solver::pick_critical_move(__int128_t &best_value){
     //update weight and random walk
     if(mt()%10000>smooth_probability){update_clause_weight();}
     else {smooth_clause_weight();}
-    random_walk();
-    return -1;
+    return random_walk()?random_walk_performed:no_move_performed;
 }
 
 void ls_solver::critical_move(uint64_t var_idx, __int128_t change_value){
@@ -2229,6 +2231,7 @@ void ls_solver::enter_bool_mode(){
 bool ls_solver::local_search(){
     for(variable v:_tmp_vars){if(v.low_bound>v.upper_bound){return false;}}//check the bound condition of vars
     int no_improve_cnt=0;
+    int no_op_cnt=0;
     int flipv;
     __int128_t change_value=0;
     start = std::chrono::steady_clock::now();
@@ -2247,7 +2250,7 @@ bool ls_solver::local_search(){
             // check_solution();
             return true;}
         if(_step%1000==0&&(TimeElapsed()>_cutoff)){break;}
-        if(no_improve_cnt>500000){initialize();no_improve_cnt=0;}//restart
+        if(no_improve_cnt>500000||no_op_cnt>=75000){initialize();no_improve_cnt=0;no_op_cnt=0;}//restart
         if(!use_swap_from_from_small_weight||mt()%100<99||sat_clause_with_false_literal->size()==0){//only when use_swap and 1% probabilty and |sat_clauses_with_false_literal| is more than 1, do the swap from small weight
         bool time_up_bool=(no_improve_cnt_bool*_lit_in_unsat_clause_num>5*_bool_lit_in_unsat_clause_num)||(unsat_clauses->size()<=20);
         bool time_up_lia=(no_improve_cnt_lia*_lit_in_unsat_clause_num>20*(_lit_in_unsat_clause_num-_bool_lit_in_unsat_clause_num));
@@ -2255,7 +2258,8 @@ bool ls_solver::local_search(){
         else if((!is_in_bool_search&&_bool_lit_in_unsat_clause_num>0&&time_up_lia)||(_lit_in_unsat_clause_num==_bool_lit_in_unsat_clause_num)){enter_bool_mode();}
         if(is_in_bool_search){
             flipv=pick_critical_move_bool();
-            if(flipv!=-1){
+            if(flipv==no_move_performed){no_op_cnt++;}
+            if(flipv>=0){
                 change_value=0;
                 int before_unsat_clauses=unsat_clauses->size();
                 int before_unsat_lits=_lit_in_unsat_clause_num;
@@ -2269,7 +2273,8 @@ bool ls_solver::local_search(){
         }
         else{
             flipv=pick_critical_move(change_value);
-            if(flipv!=-1){
+            if(flipv==no_move_performed){no_op_cnt++;}
+            if(flipv>=0){
                 int before_unsat_clauses=unsat_clauses->size();
                 int before_unsat_lits=_lit_in_unsat_clause_num;
                 __int128_t move_score=critical_score(flipv, change_value);
@@ -2283,7 +2288,8 @@ bool ls_solver::local_search(){
         }
         }
         else{swap_from_small_weight_clause();}
-        no_improve_cnt=(update_best_solution())?0:(no_improve_cnt+1);
+        if(update_best_solution()){no_improve_cnt=0;no_op_cnt=0;}
+        else{no_improve_cnt++;}
     }
     trace_window_summary("final");
     trace_state("final");

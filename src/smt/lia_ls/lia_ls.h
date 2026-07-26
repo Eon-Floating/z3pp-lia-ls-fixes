@@ -195,7 +195,7 @@ public:
     //random walk
     void                        update_clause_weight();
     void                        smooth_clause_weight();
-    void                        random_walk();
+    bool                        random_walk();
     
     //construction
     void                        construct_slution_score();//construct the solution based on score
